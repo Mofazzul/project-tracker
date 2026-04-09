@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProjectTrack — Monthly Billing Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Firebase SDKs (v9 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- html2canvas for screenshot export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0d14;
+      --surface: #111622;
+      --surface2: #161d2e;
+      --border: rgba(255,255,255,0.07);
+      --accent: #6C63FF;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    /* ─── Login Overlay ─── */
+    #loginOverlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at 60% 40%, #1a1040 0%, #0a0d14 70%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid rgba(108,99,255,.3);
+      border-radius: 20px;
+      padding: 44px 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 0 80px rgba(108,99,255,.15);
+    }
+    .login-logo {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      margin: 0 auto 20px;
+    }
+    .login-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+    .login-sub { color: var(--muted); font-size: .85rem; margin-top: 6px; margin-bottom: 32px; }
+    .login-field {
+      text-align: left;
+      margin-bottom: 14px;
+    }
+    .login-field label {
+      display: block;
+      font-size: .72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .login-field input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: .9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .login-field input:focus { border-color: var(--accent); }
+    .login-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: #fff;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: .95rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity .2s, transform .2s;
+      font-family: inherit;
+    }
+    .login-btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .login-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .login-error {
+      background: rgba(248,113,113,.1);
+      border: 1px solid rgba(248,113,113,.3);
+      color: var(--red);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: .82rem;
+      margin-top: 12px;
+      display: none;
+    }
+
+    /* ─── Loading Overlay ─── */
+    #loadingOverlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9998;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--muted); font-size: .85rem; }
+
+    /* ─── Header ─── */
+    header {
+      background: linear-gradient(135deg, #13192a 0%, #1a1040 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 66px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+    }
+    .logo span { color: var(--accent2); }
+
+    .month-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .month-picker button {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      width: 32px; height: 32px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background .2s;
+    }
+    .month-picker button:hover { background: var(--accent); }
+    #monthLabel {
+      font-size: .95rem;
+      font-weight: 600;
+      min-width: 130px;
+      text-align: center;
+      color: var(--accent2);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-email {
+      font-size: .75rem;
+      color: var(--muted);
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .logout-btn {
+      background: rgba(248,113,113,.1);
+      border: 1px solid rgba(248,113,113,.25);
+      color: var(--red);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: .78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      font-family: inherit;
+    }
+    .logout-btn:hover { background: rgba(248,113,113,.2); }
+
+    /* ─── Layout ─── */
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: calc(100vh - 66px);
+    }
+
+    /* ─── Sidebar ─── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sidebar-title {
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 8px;
+      margin-bottom: 4px;
+    }
+
+    .project-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      border: 1px solid transparent;
+    }
+    .project-item:hover { background: var(--surface2); }
+    .project-item.active {
+      background: rgba(108,99,255,.15);
+      border-color: rgba(108,99,255,.3);
+    }
+    .project-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .project-name {
+      flex: 1;
+      font-size: .88rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .project-total {
+      font-size: .75rem;
+      color: var(--green);
+      font-weight: 600;
+    }
+    .project-delete {
+      opacity: 0;
+      background: none;
+      border: none;
+      color: var(--red);
+      cursor: pointer;
+      font-size: .85rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: opacity .2s;
+    }
+    .project-item:hover .project-delete { opacity: 1; }
+
+    .add-project-form {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .add-project-form input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: .82rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .add-project-form input:focus { border-color: var(--accent); }
+    .add-project-form input::placeholder { color: var(--muted); }
+    .btn-add {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: .85rem;
+      font-weight: 600;
+      transition: opacity .2s;
+      white-space: nowrap;
+    }
+    .btn-add:hover { opacity: .85; }
+
+    .sidebar-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 12px 0;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: .88rem;
+      font-weight: 500;
+      transition: all .2s;
+      border: 1px solid transparent;
+    }
+    .nav-btn:hover { background: var(--surface2); }
+    .nav-btn.active {
+      background: rgba(52,211,153,.1);
+      border-color: rgba(52,211,153,.3);
+      color: var(--green);
+    }
+    .nav-btn .icon { font-size: 1rem; }
+
+    /* ─── Main ─── */
+    .main {
+      padding: 28px 32px;
+      overflow-y: auto;
+    }
+
+    /* ─── Panels ─── */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ─── Dashboard ─── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .stat-card.blue::before { background: linear-gradient(90deg,var(--accent),var(--accent2)); }
+    .stat-card.green::before { background: linear-gradient(90deg,#34d399,#6ee7b7); }
+    .stat-card.yellow::before { background: linear-gradient(90deg,#fbbf24,#fde68a); }
+    .stat-label {
+      font-size: .72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.yellow { color: var(--yellow); }
+    .stat-sub { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+
+    /* ─── Section Header ─── */
+    .section-hd {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-hd h2 { font-size: 1rem; font-weight: 700; }
+
+    /* ─── Work Log ─── */
+    .log-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .log-form-title {
+      font-size: .8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 140px;
+      gap: 10px;
+      align-items: end;
+    }
+    .form-group label {
+      display: block;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: .875rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+    .form-group input::placeholder { color: var(--muted); }
+    .form-group select option { background: #1a1a2e; }
+    .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+    .btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .2s;
+      font-family: inherit;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: .85; transform: translateY(-1px); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--surface2); }
+    .btn-sm { padding: 5px 12px; font-size: .8rem; }
+    .btn-danger { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+    .btn-danger:hover { background: rgba(248,113,113,.25); }
+
+    /* ─── Log Table ─── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: var(--surface2); }
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: .72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+    td {
+      padding: 13px 16px;
+      font-size: .875rem;
+      border-top: 1px solid var(--border);
+    }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: .9rem; }
+
+    /* ─── Payments ─── */
+    .payment-list { display: flex; flex-direction: column; gap: 10px; }
+    .payment-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: border-color .2s;
+    }
+    .payment-card:hover { border-color: rgba(108,99,255,.3); }
+    .payment-icon {
+      width: 40px; height: 40px;
+      background: rgba(52,211,153,.15);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .payment-info { flex: 1; }
+    .payment-amount { font-size: 1.1rem; font-weight: 700; color: var(--green); }
+    .payment-note { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    .payment-date { font-size: .8rem; color: var(--muted); }
+
+    /* ─── Invoice Panel ─── */
+    .invoice-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 40px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .invoice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+    }
+    .invoice-title {
+      font-size: 1.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .invoice-meta { text-align: right; font-size: .85rem; color: var(--muted); }
+    .invoice-meta strong { color: var(--text); display: block; font-size: 1rem; margin-bottom: 4px; }
+    .invoice-divider { height: 1px; background: var(--border); margin: 24px 0; }
+    .invoice-project { margin-bottom: 24px; }
+    .invoice-project-name {
+      font-size: .95rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .invoice-table thead tr { background: rgba(255,255,255,.04); }
+    .invoice-table th, .invoice-table td { padding: 10px 14px; }
+    .invoice-table td:last-child, .invoice-table th:last-child { text-align: right; }
+    .invoice-summary { margin-top: 28px; display: flex; justify-content: flex-end; }
+    .invoice-totals {
+      min-width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .invoice-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: .9rem;
+      color: var(--muted);
+    }
+    .invoice-row.total {
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 4px;
+    }
+    .invoice-row.due {
+      color: var(--yellow);
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+
+    /* ─── Save button states ─── */
+    .save-indicator {
+      font-size: .72rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: color .3s;
+    }
+    .save-indicator.saving { color: var(--accent2); }
+    .save-indicator.saved { color: var(--green); }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .anim { animation: fadeIn .25s ease forwards; }
+
+    /* Colors for projects */
+    .c0 { background: #6C63FF; }
+    .c1 { background: #34d399; }
+    .c2 { background: #f59e0b; }
+    .c3 { background: #f87171; }
+    .c4 { background: #60a5fa; }
+    .c5 { background: #a78bfa; }
+    .c6 { background: #fb7185; }
+    .c7 { background: #34d399; }
+  </style>
+</head>
+<body>
+
+<!-- ── Login Overlay ── -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="login-logo">📋</div>
+    <div class="login-title">Project<span style="color:var(--accent2)">Track</span></div>
+    <div class="login-sub">Sign in to access your billing tracker</div>
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" />
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="handleLogin()">Sign In</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ── Loading Overlay ── -->
+<div id="loadingOverlay" style="display:none;">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading your data…</div>
+</div>
+
+<!-- ── App (hidden until authenticated) ── -->
+<div id="appShell" style="display:none;">
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">📋</div>
+    Project<span>Track</span>
+  </div>
+  <div class="month-picker">
+    <button id="prevMonth">&#8249;</button>
+    <div id="monthLabel"></div>
+    <button id="nextMonth">&#8250;</button>
+  </div>
+  <div class="header-right">
+    <div class="save-indicator" id="saveIndicator">✓ Saved</div>
+    <div class="user-email" id="userEmail"></div>
+    <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+  </div>
+</header>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-title">Navigation</div>
+    <div class="nav-btn active" data-panel="dashboard" id="navDashboard">
+      <span class="icon">📊</span> Dashboard
+    </div>
+    <div class="nav-btn" data-panel="worklog" id="navWorklog">
+      <span class="icon">⏱️</span> Work Log
+    </div>
+    <div class="nav-btn" data-panel="payments" id="navPayments">
+      <span class="icon">💸</span> Payments
+    </div>
+    <div class="nav-btn" data-panel="invoice" id="navInvoice">
+      <span class="icon">📄</span> Summary / Invoice
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-title">Projects</div>
+    <div id="projectList"></div>
+
+    <div class="add-project-form" style="margin-top:8px;">
+      <input type="text" id="newProjectName" placeholder="Project name..." maxlength="30" />
+      <button class="btn-add" id="addProjectBtn">+ Add</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Dashboard -->
+    <div class="panel active anim" id="panelDashboard">
+      <div class="section-hd">
+        <h2>Overview — <span id="dashMonthLabel" style="color:var(--accent2)"></span></h2>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card blue">
+          <div class="stat-label">Total Billed</div>
+          <div class="stat-value" id="statTotal">$0</div>
+          <div class="stat-sub" id="statEntryCount">0 entries</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Received</div>
+          <div class="stat-value green" id="statReceived">$0</div>
+          <div class="stat-sub" id="statPayCount">0 payments</div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-label">Balance Due</div>
+          <div class="stat-value yellow" id="statDue">$0</div>
+          <div class="stat-sub">to collect</div>
+        </div>
+        <div class="stat-card blue" style="--accent:#a78bfa;">
+          <div class="stat-label">Projects</div>
+          <div class="stat-value" style="color:var(--accent2)" id="statProjects">0</div>
+          <div class="stat-sub">active this month</div>
+        </div>
+      </div>
+      <div class="section-hd">
+        <h2>Recent Work Entries</h2>
+        <button class="btn btn-outline btn-sm" data-panel="worklog">View All</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Project</th><th>Description</th><th>Amount</th>
+          </tr></thead>
+          <tbody id="recentLogBody"></tbody>
+        </table>
+      </div>
+      <div class="section-hd" style="margin-top:28px;">
+        <h2>Recent Payments</h2>
+        <button class="btn btn-outline btn-sm" data-panel="payments">View All</button>
+      </div>
+      <div id="recentPayList" class="payment-list"></div>
+    </div>
+
+    <!-- Work Log -->
+    <div class="panel" id="panelWorklog">
+      <div class="section-hd">
+        <h2>Work Log — <span style="color:var(--accent2)" id="wlMonthLabel"></span></h2>
+      </div>
+      <div class="log-form">
+        <div class="log-form-title">Add Work Entry</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Project</label>
+            <select id="entryProject"></select>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="entryDesc" placeholder="e.g. Homepage redesign" />
+          </div>
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="entryAmount" min="0" step="0.01" placeholder="200" />
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-top:10px;">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="entryDate" />
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" id="entryNotes" placeholder="Any extra notes..." />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" id="clearEntryBtn">Clear</button>
+          <button class="btn btn-primary" id="addEntryBtn">➕ Add Entry</button>
+        </div>
+      </div>
+      <div class="section-hd">
+        <h2>Entries This Month</h2>
+        <select id="filterProject" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:.8rem;font-family:inherit;outline:none;">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Project</th><th>Description</th><th>Amount</th><th>Notes</th><th></th>
+          </tr></thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Payments -->
+    <div class="panel" id="panelPayments">
+      <div class="section-hd">
+        <h2>Payments — <span style="color:var(--accent2)" id="pymMonthLabel"></span></h2>
+      </div>
+      <div class="log-form">
+        <div class="log-form-title">Record Payment Received</div>
+        <div class="form-grid" style="grid-template-columns:150px 1fr 1fr;">
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="pymAmount" min="0" placeholder="500" />
+          </div>
+          <div class="form-group">
+            <label>Date Received</label>
+            <input type="date" id="pymDate" />
+          </div>
+          <div class="form-group">
+            <label>Note (optional)</label>
+            <input type="text" id="pymNote" placeholder="e.g. Installment 1 of 3" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="addPaymentBtn">💵 Record Payment</button>
+        </div>
+      </div>
+      <div class="section-hd"><h2>Payment History</h2></div>
+      <div id="paymentList" class="payment-list"></div>
+    </div>
+
+    <!-- Invoice -->
+    <div class="panel" id="panelInvoice">
+      <div class="section-hd">
+        <h2>Monthly Summary</h2>
+        <button class="btn btn-outline btn-sm" id="screenshotBtn" onclick="downloadInvoiceImage()">📸 Save as Image</button>
+      </div>
+      <div class="invoice-wrap" id="invoiceContent"></div>
+    </div>
+
+  </main>
+</div><!-- /.app -->
+</div><!-- /#appShell -->
+
+<script>
+// ═══════════════════════════════════════════════════
+//  FIREBASE CONFIG — paste yours here
+//  Get it from: Firebase Console → Project Settings → Your apps → Web
+// ═══════════════════════════════════════════════════
+const firebaseConfig = {
+    apiKey: "AIzaSyBKl6qzF21RLSLXWp_mqsXj0AEBcUxK_TM",
+    authDomain: "project-tracker-253fe.firebaseapp.com",
+    databaseURL: "https://project-tracker-253fe-default-rtdb.firebaseio.com",
+    projectId: "project-tracker-253fe",
+    storageBucket: "project-tracker-253fe.firebasestorage.app",
+    messagingSenderId: "743812193795",
+    appId: "1:743812193795:web:1b80366870097a45683836",
+    measurementId: "G-4FMZ6M6D9K"
+  };
+
+// ─── Init Firebase ───
+firebase.initializeApp(firebaseConfig);
+const auth  = firebase.auth();
+const db    = firebase.firestore();
+
+// ═══════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════
+const COLORS   = ['c0','c1','c2','c3','c4','c5','c6','c7'];
+const CURRENCY = '$';
+
+let state = {
+  projects:     [],
+  entries:      {},
+  payments:     {},
+  currentMonth: '',
+  activePanel:  'dashboard',
+};
+
+let currentUid  = null;
+let saveTimer   = null;
+
+function uid() { return Math.random().toString(36).slice(2,9); }
+function monthKey() { return state.currentMonth; }
+function monthEntries()  { return state.entries[monthKey()]  || []; }
+function monthPayments() { return state.payments[monthKey()] || []; }
+function formatMoney(n) { return CURRENCY + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function projectById(id) { return state.projects.find(p => p.id === id); }
+function monthLabel(key) {
+  const [y, m] = key.split('-');
+  return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+// ═══════════════════════════════════════════════════
+//  Firebase Auth
+// ═══════════════════════════════════════════════════
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('loginOverlay').style.display  = 'none';
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    document.getElementById('appShell').style.display      = 'none';
+    document.getElementById('userEmail').textContent       = user.email;
+    loadFromFirestore(user.uid);
+  } else {
+    document.getElementById('loginOverlay').style.display  = 'flex';
+    document.getElementById('loadingOverlay').style.display = 'none';
+    document.getElementById('appShell').style.display      = 'none';
+  }
+});
+
+async function handleLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn      = document.getElementById('loginBtn');
+  const errEl    = document.getElementById('loginError');
+
+  errEl.style.display = 'none';
+  if (!email || !password) { showLoginError('Please enter your email and password.'); return; }
+
+  btn.disabled     = true;
+  btn.textContent  = 'Signing in…';
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch (e) {
+    const msgs = {
+      'auth/user-not-found':  'No account found with that email.',
+      'auth/wrong-password':  'Incorrect password.',
+      'auth/invalid-email':   'Invalid email address.',
+      'auth/too-many-requests': 'Too many failed attempts. Try again later.',
+    };
+    showLoginError(msgs[e.code] || 'Sign in failed. Please check your credentials.');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent    = msg;
+  el.style.display  = 'block';
+}
+
+async function handleLogout() {
+  await auth.signOut();
+  // reset state
+  state = { projects: [], entries: {}, payments: {}, currentMonth: '', activePanel: 'dashboard' };
+  currentUid = null;
+}
+
+// Enter key on password field triggers login
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+});
+
+// ═══════════════════════════════════════════════════
+//  Firestore — Load & Save
+// ═══════════════════════════════════════════════════
+async function loadFromFirestore(uid) {
+  currentUid = uid;
+  try {
+    const docRef = db.collection('users').doc(uid).collection('appdata').doc('main');
+    const snap   = await docRef.get();
+
+    if (snap.exists) {
+      const data = snap.data();
+      Object.assign(state, data);
+    } else {
+      // First time — try migrating from localStorage
+      const local = localStorage.getItem('projecttrack_v1');
+      if (local) {
+        try {
+          Object.assign(state, JSON.parse(local));
+          localStorage.removeItem('projecttrack_v1');
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    console.error('Firestore load error:', e);
+  }
+
+  // Ensure current month
+  if (!state.currentMonth) {
+    const now = new Date();
+    state.currentMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  setTodayDate();
+  updateMonthLabels();
+  renderAll();
+
+  document.getElementById('loadingOverlay').style.display = 'none';
+  document.getElementById('appShell').style.display       = 'block';
+  setSaveIndicator('saved');
+}
+
+function saveState() {
+  if (!currentUid) return;
+  setSaveIndicator('saving');
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await db.collection('users').doc(currentUid).collection('appdata').doc('main').set(state);
+      setSaveIndicator('saved');
+    } catch(e) {
+      console.error('Firestore save error:', e);
+      setSaveIndicator('error');
+    }
+  }, 800);
+}
+
+function setSaveIndicator(status) {
+  const el = document.getElementById('saveIndicator');
+  el.className = 'save-indicator';
+  if (status === 'saving') { el.classList.add('saving'); el.textContent = '⟳ Saving…'; }
+  else if (status === 'saved') { el.classList.add('saved'); el.textContent = '✓ Saved'; }
+  else { el.style.color = 'var(--red)'; el.textContent = '✗ Save failed'; }
+}
+
+// ═══════════════════════════════════════════════════
+//  Month Navigation
+// ═══════════════════════════════════════════════════
+function setCurrentMonth(key) {
+  state.currentMonth = key;
+  saveState();
+  updateMonthLabels();
+  renderAll();
+}
+function updateMonthLabels() {
+  const lbl = monthLabel(state.currentMonth);
+  document.getElementById('monthLabel').textContent     = lbl;
+  document.getElementById('dashMonthLabel').textContent = lbl;
+  document.getElementById('wlMonthLabel').textContent   = lbl;
+  document.getElementById('pymMonthLabel').textContent  = lbl;
+}
+document.getElementById('prevMonth').onclick = () => {
+  const [y, m] = state.currentMonth.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+};
+document.getElementById('nextMonth').onclick = () => {
+  const [y, m] = state.currentMonth.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+};
+
+// ═══════════════════════════════════════════════════
+//  Projects
+// ═══════════════════════════════════════════════════
+function renderProjects() {
+  const list    = document.getElementById('projectList');
+  const entries = monthEntries();
+  list.innerHTML = '';
+
+  state.projects.forEach(p => {
+    const total = entries.filter(e => e.projectId === p.id).reduce((s, e) => s + (e.amount || 0), 0);
+    const el = document.createElement('div');
+    el.className = 'project-item';
+    el.innerHTML = `
+      <span class="project-dot ${p.color}"></span>
+      <span class="project-name">${p.name}</span>
+      ${total > 0 ? `<span class="project-total">${formatMoney(total)}</span>` : ''}
+      <button class="project-delete" title="Delete project">🗑</button>
+    `;
+    list.appendChild(el);
+    el.querySelector('.project-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      deleteProject(p.id);
+    });
+  });
+
+  updateProjectSelects();
+}
+
+function addProject() {
+  const input = document.getElementById('newProjectName');
+  const name  = input.value.trim();
+  if (!name) return;
+  const color = COLORS[state.projects.length % COLORS.length];
+  state.projects.push({ id: uid(), name, color });
+  input.value = '';
+  saveState();
+  renderProjects();
+}
+
+function deleteProject(id) {
+  state.projects = state.projects.filter(p => p.id !== id);
+  saveState();
+  renderAll();
+}
+
+document.getElementById('addProjectBtn').onclick = addProject;
+document.getElementById('newProjectName').addEventListener('keydown', e => { if (e.key === 'Enter') addProject(); });
+
+function updateProjectSelects() {
+  ['entryProject', 'filterProject'].forEach(selId => {
+    const sel  = document.getElementById(selId);
+    const prev = sel.value;
+    sel.innerHTML = selId === 'filterProject' ? '<option value="">All Projects</option>' : '';
+    state.projects.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  Work Log
+// ═══════════════════════════════════════════════════
+function setTodayDate() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('entryDate').value = today;
+  document.getElementById('pymDate').value   = today;
+}
+
+function addEntry() {
+  const projectId = document.getElementById('entryProject').value;
+  const desc      = document.getElementById('entryDesc').value.trim();
+  const amount    = parseFloat(document.getElementById('entryAmount').value);
+  const date      = document.getElementById('entryDate').value;
+  const notes     = document.getElementById('entryNotes').value.trim();
+
+  if (!projectId)          { alert('Please select a project.'); return; }
+  if (!desc)               { alert('Please enter a description.'); return; }
+  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  if (!date)               { alert('Please select a date.'); return; }
+
+  const key = monthKey();
+  if (!state.entries[key]) state.entries[key] = [];
+  state.entries[key].push({ id: uid(), projectId, desc, amount, date, notes });
+  saveState();
+  clearEntryForm();
+  renderAll();
+}
+
+function clearEntryForm() {
+  document.getElementById('entryDesc').value   = '';
+  document.getElementById('entryAmount').value = '';
+  document.getElementById('entryNotes').value  = '';
+  setTodayDate();
+}
+
+function deleteEntry(id) {
+  const key = monthKey();
+  state.entries[key] = (state.entries[key] || []).filter(e => e.id !== id);
+  saveState();
+  renderAll();
+}
+
+document.getElementById('addEntryBtn').onclick   = addEntry;
+document.getElementById('clearEntryBtn').onclick = clearEntryForm;
+
+function renderLogTable(entries, tbodyId, limit) {
+  const tbody        = document.getElementById(tbodyId);
+  const filterProjId = tbodyId === 'logBody' ? document.getElementById('filterProject').value : '';
+  let filtered       = filterProjId ? entries.filter(e => e.projectId === filterProjId) : entries;
+  filtered           = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
+  if (limit) filtered = filtered.slice(0, limit);
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">📭</div><p>No entries yet for this month.</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const proj = projectById(e.projectId);
+    return `<tr class="anim">
+      <td>${formatDate(e.date)}</td>
+      <td><span class="badge" style="background:rgba(108,99,255,.15);color:var(--accent2);">${proj ? proj.name : '—'}</span></td>
+      <td>${e.desc}</td>
+      <td style="color:var(--green);font-weight:600;">${formatMoney(e.amount || 0)}</td>
+      ${tbodyId !== 'recentLogBody' ? `<td style="color:var(--muted);font-size:.8rem;">${e.notes || '—'}</td>` : ''}
+      ${tbodyId !== 'recentLogBody' ? `<td><button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td>` : ''}
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('filterProject').onchange = () => renderLogTable(monthEntries(), 'logBody');
+
+function formatDate(str) {
+  if (!str) return '—';
+  const d = new Date(str + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ═══════════════════════════════════════════════════
+//  Payments
+// ═══════════════════════════════════════════════════
+function addPayment() {
+  const amount = parseFloat(document.getElementById('pymAmount').value);
+  const date   = document.getElementById('pymDate').value;
+  const note   = document.getElementById('pymNote').value.trim();
+
+  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  if (!date)                  { alert('Please select a date.'); return; }
+
+  const key = monthKey();
+  if (!state.payments[key]) state.payments[key] = [];
+  state.payments[key].push({ id: uid(), amount, date, note });
+  saveState();
+  document.getElementById('pymAmount').value = '';
+  document.getElementById('pymNote').value   = '';
+  renderAll();
+}
+
+function deletePayment(id) {
+  const key = monthKey();
+  state.payments[key] = (state.payments[key] || []).filter(p => p.id !== id);
+  saveState();
+  renderAll();
+}
+
+document.getElementById('addPaymentBtn').onclick = addPayment;
+
+function renderPayments(payments, containerId, limit) {
+  const el     = document.getElementById(containerId);
+  let sorted   = [...payments].sort((a, b) => b.date.localeCompare(a.date));
+  if (limit) sorted = sorted.slice(0, limit);
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>No payments recorded yet.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = sorted.map(p => `
+    <div class="payment-card anim">
+      <div class="payment-icon">💵</div>
+      <div class="payment-info">
+        <div class="payment-amount">${formatMoney(p.amount)}</div>
+        <div class="payment-note">${p.note || 'Payment received'}</div>
+      </div>
+      <div class="payment-date">${formatDate(p.date)}</div>
+      ${containerId !== 'recentPayList' ? `<button class="btn btn-danger btn-sm" onclick="deletePayment('${p.id}')">Delete</button>` : ''}
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════
+//  Dashboard
+// ═══════════════════════════════════════════════════
+function renderDashboard() {
+  const entries       = monthEntries();
+  const payments      = monthPayments();
+  const totalBilled   = entries.reduce((s, e)  => s + (e.amount || 0), 0);
+  const totalReceived = payments.reduce((s, p) => s + p.amount, 0);
+  const due           = totalBilled - totalReceived;
+  const activeProjects = [...new Set(entries.map(e => e.projectId))].length;
+
+  document.getElementById('statTotal').textContent      = formatMoney(totalBilled);
+  document.getElementById('statEntryCount').textContent = `${entries.length} entr${entries.length !== 1 ? 'ies' : 'y'}`;
+  document.getElementById('statReceived').textContent   = formatMoney(totalReceived);
+  document.getElementById('statPayCount').textContent   = `${payments.length} payment${payments.length !== 1 ? 's' : ''}`;
+  document.getElementById('statDue').textContent        = formatMoney(Math.max(0, due));
+  document.getElementById('statProjects').textContent   = activeProjects;
+
+  renderLogTable(entries, 'recentLogBody', 5);
+  renderPayments(payments, 'recentPayList', 3);
+}
+
+// ═══════════════════════════════════════════════════
+//  Invoice
+// ═══════════════════════════════════════════════════
+function renderInvoice() {
+  const entries       = monthEntries();
+  const payments      = monthPayments();
+  const mlabel        = monthLabel(state.currentMonth);
+  const totalBilled   = entries.reduce((s, e)  => s + (e.amount || 0), 0);
+  const totalReceived = payments.reduce((s, p) => s + p.amount, 0);
+  const due           = totalBilled - totalReceived;
+
+  const byProject = {};
+  entries.forEach(e => {
+    if (!byProject[e.projectId]) byProject[e.projectId] = [];
+    byProject[e.projectId].push(e);
+  });
+
+  const projectSections = Object.entries(byProject).map(([pid, ents]) => {
+    const proj      = projectById(pid);
+    const projTotal = ents.reduce((s, e) => s + (e.amount || 0), 0);
+    const rows      = [...ents].sort((a, b) => a.date.localeCompare(b.date)).map(e => `
+      <tr>
+        <td>${formatDate(e.date)}</td>
+        <td>${e.desc}${e.notes ? ` <span style="color:var(--muted);font-size:.78rem;">(${e.notes})</span>` : ''}</td>
+        <td style="font-weight:600;color:var(--green);text-align:right;">${formatMoney(e.amount || 0)}</td>
+      </tr>
+    `).join('');
+    const colorClass = proj ? proj.color : 'c0';
+    return `
+      <div class="invoice-project">
+        <div class="invoice-project-name">
+          <span class="project-dot ${colorClass}"></span>
+          ${proj ? proj.name : 'Unknown Project'}
+          <span style="margin-left:auto;color:var(--green);font-size:.9rem;">${formatMoney(projTotal)}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="invoice-table">
+            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const paymentRows = [...payments].sort((a, b) => a.date.localeCompare(b.date)).map(p => `
+    <div class="invoice-row">
+      <span>${formatDate(p.date)} — ${p.note || 'Payment'}</span>
+      <span style="color:var(--green);">-${formatMoney(p.amount)}</span>
+    </div>
+  `).join('');
+
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  document.getElementById('invoiceContent').innerHTML = `
+    <div class="invoice-header">
+      <div>
+        <div class="invoice-title">Monthly Summary</div>
+        <div style="color:var(--muted);font-size:.85rem;margin-top:4px;">${mlabel}</div>
+      </div>
+      <div class="invoice-meta">
+        <strong>Generated</strong>
+        ${today}
+      </div>
+    </div>
+    <div class="invoice-divider"></div>
+
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="icon">📭</div><p>No work entries for this month yet.</p></div>`
+      : projectSections
+    }
+
+    <div class="invoice-divider"></div>
+    <div class="invoice-summary">
+      <div class="invoice-totals">
+        <div class="invoice-row">
+          <span>Total Entries</span>
+          <span>${entries.length}</span>
+        </div>
+        <div class="invoice-row total">
+          <span>Total Billed</span>
+          <span>${formatMoney(totalBilled)}</span>
+        </div>
+        ${payments.length > 0 ? `
+        <div style="margin-top:12px;margin-bottom:4px;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Payments Received</div>
+        ${paymentRows}
+        <div class="invoice-row" style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">
+          <span>Total Received</span>
+          <span style="color:var(--green);">-${formatMoney(totalReceived)}</span>
+        </div>` : ''}
+        <div class="invoice-row due" style="margin-top:10px;padding-top:10px;border-top:2px solid rgba(251,191,36,.3);">
+          <span>💰 Amount Due</span>
+          <span>${formatMoney(Math.max(0, due))}</span>
+        </div>
+        ${due < 0 ? `<div style="font-size:.8rem;color:var(--green);text-align:right;margin-top:4px;">✅ Overpaid by ${formatMoney(-due)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════
+//  Screenshot Export
+// ═══════════════════════════════════════════════════
+async function downloadInvoiceImage() {
+  const el  = document.getElementById('invoiceContent');
+  const btn = document.getElementById('screenshotBtn');
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Capturing…';
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#111622',
+    });
+    const link     = document.createElement('a');
+    link.download  = `projecttrack-${state.currentMonth}.png`;
+    link.href      = canvas.toDataURL('image/png');
+    link.click();
+  } catch(e) {
+    alert('Screenshot failed. Please try again.');
+    console.error(e);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '📸 Save as Image';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  Panel Navigation
+// ═══════════════════════════════════════════════════
+function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p   => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel' + capitalize(name)).classList.add('active');
+  const navEl = document.getElementById('nav' + capitalize(name));
+  if (navEl) navEl.classList.add('active');
+  state.activePanel = name;
+  renderAll();
+}
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+document.querySelectorAll('[data-panel]').forEach(el => {
+  el.addEventListener('click', () => switchPanel(el.dataset.panel));
+});
+
+// ═══════════════════════════════════════════════════
+//  Render All
+// ═══════════════════════════════════════════════════
+function renderAll() {
+  renderProjects();
+  renderDashboard();
+  renderLogTable(monthEntries(), 'logBody');
+  renderPayments(monthPayments(), 'paymentList');
+  renderInvoice();
+}
+</script>
+</body>
+</html>
