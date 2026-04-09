@@ -906,6 +906,7 @@ let state = {
 
 let currentUid  = null;
 let saveTimer   = null;
+let editingId   = null; // track currently edited entry id
 
 function uid() { return Math.random().toString(36).slice(2,9); }
 function monthKey() { return state.currentMonth; }
@@ -1158,16 +1159,54 @@ function addEntry() {
 
   const key = monthKey();
   if (!state.entries[key]) state.entries[key] = [];
-  state.entries[key].push({ id: uid(), projectId, desc, amount, date, notes });
+
+  if (editingId) {
+    // Update existing
+    const idx = state.entries[key].findIndex(e => e.id === editingId);
+    if (idx !== -1) {
+      state.entries[key][idx] = { ...state.entries[key][idx], projectId, desc, amount, date, notes };
+    }
+  } else {
+    // Add new
+    state.entries[key].push({ id: uid(), projectId, desc, amount, date, notes });
+  }
+
   saveState();
   clearEntryForm();
   renderAll();
 }
 
+function editEntry(id) {
+  const key = monthKey();
+  const entry = (state.entries[key] || []).find(e => e.id === id);
+  if (!entry) return;
+
+  editingId = id;
+  document.getElementById('entryProject').value = entry.projectId;
+  document.getElementById('entryDesc').value    = entry.desc;
+  document.getElementById('entryAmount').value  = entry.amount;
+  document.getElementById('entryDate').value    = entry.date;
+  document.getElementById('entryNotes').value   = entry.notes;
+
+  const btn = document.getElementById('addEntryBtn');
+  btn.innerHTML = '💾 Update Entry';
+  btn.classList.add('btn-success');
+  
+  // scroll to form
+  document.getElementById('panelWorklog').scrollTop = 0;
+  switchPanel('worklog');
+}
+
 function clearEntryForm() {
+  editingId = null;
   document.getElementById('entryDesc').value   = '';
   document.getElementById('entryAmount').value = '';
   document.getElementById('entryNotes').value  = '';
+  
+  const btn = document.getElementById('addEntryBtn');
+  btn.innerHTML = '➕ Add Entry';
+  btn.classList.remove('btn-success');
+  
   setTodayDate();
 }
 
@@ -1201,7 +1240,11 @@ function renderLogTable(entries, tbodyId, limit) {
       <td>${e.desc}</td>
       <td style="color:var(--green);font-weight:600;">${formatMoney(e.amount || 0)}</td>
       ${tbodyId !== 'recentLogBody' ? `<td style="color:var(--muted);font-size:.8rem;">${e.notes || '—'}</td>` : ''}
-      ${tbodyId !== 'recentLogBody' ? `<td><button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td>` : ''}
+      ${tbodyId !== 'recentLogBody' ? `
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="editEntry('${e.id}')" style="margin-right:4px;">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button>
+      </td>` : ''}
     </tr>`;
   }).join('');
 }
